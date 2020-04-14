@@ -101,26 +101,23 @@ namespace BoxesForElectricCircuit
                         createdConduits.Add(conduit);
                     }
 
-                    //for (var i = 0; i < createdConduits.Count() - 1; i++)
-                    //{
-                    //    var connector1 = new Connector();
-                    //    var connector2;
-                    //    foreach (Connector c in createdConduits.ElementAt(i).ConnectorManager.Connectors)
-                    //    {
-                    //        // моя тут сломался фмгня получается
-                    //        connector1 = c;
-                    //        break;
-                    //    }
-                    //    foreach (Connector c in createdConduits.ElementAt(i+1).ConnectorManager.Connectors)
-                    //    {
-                    //        
-                    //        connector2 = c;
-                    //        break;
-                    //    }
-                    //    document.Create.NewElbowFitting(
-                    //        connector1,
-                    //        connector2);
-                    //}
+                    for (var i = 0; i < createdConduits.Count() - 1; i++)
+                    {
+                        var connectorSet = createdConduits.ElementAt(i).ConnectorManager.Connectors;
+                        var enumerator = connectorSet.GetEnumerator();
+                        enumerator.MoveNext();
+                        enumerator.MoveNext();
+                        var connector1 = (Connector) enumerator.Current;
+
+                        connectorSet = createdConduits.ElementAt(i+1).ConnectorManager.Connectors;
+                        enumerator = connectorSet.GetEnumerator();
+                        enumerator.MoveNext();
+                        var connector2 = (Connector) enumerator.Current;
+                        
+                        document.Create.NewElbowFitting(
+                            connector1,
+                            connector2);
+                    }
                 }
                 
                 tr.Commit();
@@ -131,7 +128,6 @@ namespace BoxesForElectricCircuit
                 TaskDialog.Show("Error", e.ToString());
                 return Result.Failed;
             }
-            return Result.Succeeded;
         }
 
         private void GetSomeShit(Document document, out string message)
