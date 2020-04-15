@@ -74,14 +74,14 @@ namespace BoxesForElectricCircuit
                     for (var i = 0; i < x.Item2.Count() - 1; i++)
                     {
                         var startPoint = new XYZ(
-                            Math.Min(x.Item2[i].X, x.Item2[i + 1].X) - 0.01,
-                            Math.Min(x.Item2[i].Y, x.Item2[i + 1].Y) - 0.01,
-                            Math.Min(x.Item2[i].Z, x.Item2[i + 1].Z) - 0.01
+                            Math.Min(x.Item2[i].X, x.Item2[i + 1].X) - 0.1,
+                            Math.Min(x.Item2[i].Y, x.Item2[i + 1].Y) - 0.1,
+                            Math.Min(x.Item2[i].Z, x.Item2[i + 1].Z) - 0.1
                             );
                         var endPoint = new XYZ(
-                            Math.Max(x.Item2[i].X, x.Item2[i + 1].X) + 0.01,
-                            Math.Max(x.Item2[i].Y, x.Item2[i + 1].Y) + 0.01,
-                            Math.Max(x.Item2[i].Z, x.Item2[i + 1].Z) + 0.01
+                            Math.Max(x.Item2[i].X, x.Item2[i + 1].X) + 0.1,
+                            Math.Max(x.Item2[i].Y, x.Item2[i + 1].Y) + 0.1,
+                            Math.Max(x.Item2[i].Z, x.Item2[i + 1].Z) + 0.1
                             );
                         var myOutLn = new Outline(startPoint, endPoint);
                         var conduits = new List<ElementId>();
@@ -97,7 +97,15 @@ namespace BoxesForElectricCircuit
                                 .ToList();
                         }
                         document.Delete(conduits);
-                        var conduit = Conduit.Create(document, conduitTypeId, x.Item2.ElementAt(i), x.Item2.ElementAt(i + 1), x.Item1);
+
+                        var delta = 0.2;
+                        var originalBeginning = x.Item2.ElementAt(i);
+                        var originalEnd = x.Item2.ElementAt(i + 1);
+                        var beginning = new XYZ();
+                        var end = new XYZ();
+                        CutCondiut(delta, originalBeginning, originalEnd, out beginning, out end);
+                        var levelId = x.Item1;
+                        var conduit = Conduit.Create(document, conduitTypeId, beginning, end, levelId);
                         createdConduits.Add(conduit);
                     }
 
@@ -108,7 +116,7 @@ namespace BoxesForElectricCircuit
                         enumerator.MoveNext();
                         enumerator.MoveNext();
                         var connector1 = (Connector) enumerator.Current;
-
+                    
                         connectorSet = createdConduits.ElementAt(i+1).ConnectorManager.Connectors;
                         enumerator = connectorSet.GetEnumerator();
                         enumerator.MoveNext();
@@ -190,6 +198,33 @@ namespace BoxesForElectricCircuit
                     return true;
             }
             return false;
+        }
+
+        private void CutCondiut(
+            double delta,
+            XYZ originalBeginning,
+            XYZ originalEnd,
+            out XYZ resultBeginning,
+            out XYZ resultEnd)
+        {
+            var vector = new XYZ(
+                originalEnd.X - originalBeginning.X,
+                originalEnd.Y - originalBeginning.Y,
+                originalEnd.Z - originalBeginning.Z);
+            var vectorLen = Math.Sqrt(vector.X * vector.X + vector.Y * vector.Y + vector.Z * vector.Z);
+            var k = (vectorLen - delta) / vectorLen;
+            var tempVector = new XYZ(
+                vector.X * k,
+                vector.Y * k,
+                vector.Z * k);
+            resultEnd = new XYZ(
+                originalBeginning.X + tempVector.X,
+                originalBeginning.Y + tempVector.Y,
+                originalBeginning.Z + tempVector.Z);
+            resultBeginning = new XYZ(
+                originalEnd.X - tempVector.X,
+                originalEnd.Y - tempVector.Y,
+                originalEnd.Z - tempVector.Z);
         }
     }
 }
