@@ -22,8 +22,6 @@ namespace BoxesForElectricCircuit
 
         public Result Execute(ExternalCommandData revit, ref string message, ElementSet elements)
         {
-
-
             try
             {
                 var document = revit.Application.ActiveUIDocument.Document;
@@ -109,22 +107,20 @@ namespace BoxesForElectricCircuit
                         createdConduits.Add(conduit);
                     }
 
+                    var number = 1;
                     for (var i = 0; i < createdConduits.Count() - 1; i++)
                     {
+                        var point = x.Item2.ElementAt(number);
                         var connectorSet = createdConduits.ElementAt(i).ConnectorManager.Connectors;
-                        var enumerator = connectorSet.GetEnumerator();
-                        enumerator.MoveNext();
-                        enumerator.MoveNext();
-                        var connector1 = (Connector) enumerator.Current;
-                    
+                        var connector1 = GetConnectorClosestTo(connectorSet, point);
+
                         connectorSet = createdConduits.ElementAt(i+1).ConnectorManager.Connectors;
-                        enumerator = connectorSet.GetEnumerator();
-                        enumerator.MoveNext();
-                        var connector2 = (Connector) enumerator.Current;
-                        
+                        var connector2 = GetConnectorClosestTo(connectorSet, point);
+
                         document.Create.NewElbowFitting(
                             connector1,
                             connector2);
+                        number++;
                     }
                 }
                 
@@ -226,5 +222,27 @@ namespace BoxesForElectricCircuit
                 originalEnd.Y - tempVector.Y,
                 originalEnd.Z - tempVector.Z);
         }
+
+        static Connector GetConnectorClosestTo(
+            ConnectorSet connectors,
+            XYZ p)
+        {
+            Connector targetConnector = null;
+            double minDist = double.MaxValue;
+
+            foreach (Connector c in connectors)
+            {
+                double d = c.Origin.DistanceTo(p);
+
+                if (d < minDist)
+                {
+                    targetConnector = c;
+                    minDist = d;
+                }
+            }
+            return targetConnector;
+        }
+
+
     }
 }
