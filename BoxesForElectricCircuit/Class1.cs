@@ -18,8 +18,6 @@ namespace BoxesForElectricCircuit
         List<Element> ConduitTypes = new List<Element>();
         List<Element> ConduitFitting = new List<Element>();
 
-
-
         public Result Execute(ExternalCommandData revit, ref string message, ElementSet elements)
         {
             try
@@ -65,61 +63,40 @@ namespace BoxesForElectricCircuit
                 
                 Transaction tr = new Transaction(document, "Создание коробов по электрической цепи");
                 tr.Start();
-                
+
+                var delta = 0.0;
+
+                foreach (ConduitType type in ConduitTypes)
+                {
+                    var dummyConduit = Conduit.Create(
+                        document,
+                        type.Id,
+                        new XYZ(),
+                        new XYZ(1, 1, 1),
+                        electricalCircuitsWithLevelId.First().Item1);
+                    delta = Math.Max(0, dummyConduit.Diameter);
+                    document.Delete(dummyConduit.Id);
+                }
+
                 foreach (var x in electricalCircuitsWithLevelId)
                 {
                     var createdConduits = new List<Conduit>();
                     for (var i = 0; i < x.Item2.Count() - 1; i++)
                     {
-                        var startPoint = new XYZ(
-                            Math.Min(x.Item2[i].X, x.Item2[i + 1].X) - 0.1,
-                            Math.Min(x.Item2[i].Y, x.Item2[i + 1].Y) - 0.1,
-                            Math.Min(x.Item2[i].Z, x.Item2[i + 1].Z) - 0.1
-                            );
-                        var endPoint = new XYZ(
-                            Math.Max(x.Item2[i].X, x.Item2[i + 1].X) + 0.1,
-                            Math.Max(x.Item2[i].Y, x.Item2[i + 1].Y) + 0.1,
-                            Math.Max(x.Item2[i].Z, x.Item2[i + 1].Z) + 0.1
-                            );
-                        var myOutLn = new Outline(startPoint, endPoint);
-                        var conduits = new List<ElementId>();
-                        if (!myOutLn.IsEmpty)
-                        {
-                            var filter = new BoundingBoxIsInsideFilter(myOutLn);
-                            var collector = new FilteredElementCollector(document);
-                            conduits = collector
-                                .WherePasses(filter)
-                                .OfClass(typeof(Conduit))
-                                .Cast<Conduit>()
-                                .Select(a => a.Id)
-                                .ToList();
-                        }
-                        document.Delete(conduits);
-
-                        var delta = 0.2;
-                        var originalBeginning = x.Item2.ElementAt(i);
-                        var originalEnd = x.Item2.ElementAt(i + 1);
-                        var beginning = new XYZ();
-                        var end = new XYZ();
-                        CutCondiut(delta, originalBeginning, originalEnd, out beginning, out end);
+                        DeleteConduit(document, x.Item2.ElementAt(i), x.Item2.ElementAt(i + 1), delta);
+                        var beginning = x.Item2.ElementAt(i);
+                        var end = x.Item2.ElementAt(i + 1);
                         var levelId = x.Item1;
                         var conduit = Conduit.Create(document, conduitTypeId, beginning, end, levelId);
                         createdConduits.Add(conduit);
                     }
-
                     var number = 1;
                     for (var i = 0; i < createdConduits.Count() - 1; i++)
                     {
                         var point = x.Item2.ElementAt(number);
-                        var connectorSet = createdConduits.ElementAt(i).ConnectorManager.Connectors;
-                        var connector1 = GetConnectorClosestTo(connectorSet, point);
-
-                        connectorSet = createdConduits.ElementAt(i+1).ConnectorManager.Connectors;
-                        var connector2 = GetConnectorClosestTo(connectorSet, point);
-
-                        document.Create.NewElbowFitting(
-                            connector1,
-                            connector2);
+                        Connect(point,
+                            createdConduits.ElementAt(i),
+                            createdConduits.ElementAt(i + 1));
                         number++;
                     }
                 }
@@ -196,6 +173,81 @@ namespace BoxesForElectricCircuit
             return false;
         }
 
+        static Connector GetConnectorClosestTo( ConnectorSet connectors, XYZ point)
+        {
+            Connector targetConnector = null;
+            double minDist = double.MaxValue;
+
+            foreach (Connector connector in connectors)
+            {
+                double distance = connector.Origin.DistanceTo(point);
+
+                if (distance < minDist)
+                {
+                    targetConnector = connector;
+                    minDist = distance;
+                }
+            }
+            return targetConnector;
+        }
+
+        static ConnectorManager GetConnectorManager(Element element)
+        {
+            MEPCurve mepCurve = element as MEPCurve;
+            FamilyInstance familyInstance = element as FamilyInstance;
+
+            if (null == mepCurve && null == familyInstance)
+            {
+                throw new ArgumentException(
+                  "Element is neither an MEP curve nor a fitting.");
+            }
+
+            return null == mepCurve
+              ? familyInstance.MEPModel.ConnectorManager
+              : mepCurve.ConnectorManager;
+        }
+
+        public static void Connect(XYZ point, Element firstElement, Element secondElement)
+        {
+            ConnectorManager connectorManager = GetConnectorManager(firstElement);
+            if (null == connectorManager)
+                throw new ArgumentException($"Element with id({firstElement.Id}) has no connectors.");
+            Connector firstElementConnector = GetConnectorClosestTo(connectorManager.Connectors, point);
+
+            connectorManager = GetConnectorManager(secondElement);
+            if (null == connectorManager)
+                throw new ArgumentException($"Element with id({secondElement.Id}) has no connectors.");
+            Connector secondElementConnector = GetConnectorClosestTo(connectorManager.Connectors, point);
+
+            firstElementConnector.ConnectTo(secondElementConnector);
+        }
+
+        private void DeleteConduit(Document document, XYZ firstPoint, XYZ secondPoint, double delta)
+        {
+            var startPoint = new XYZ(
+                Math.Min(firstPoint.X, secondPoint.X) - delta,
+                Math.Min(firstPoint.Y, secondPoint.Y) - delta,
+                Math.Min(firstPoint.Z, secondPoint.Z) - delta);
+            var endPoint = new XYZ(
+                Math.Max(firstPoint.X, secondPoint.X) + delta,
+                Math.Max(firstPoint.Y, secondPoint.Y) + delta,
+                Math.Max(firstPoint.Z, secondPoint.Z) + delta);
+            var myOutLn = new Outline(startPoint, endPoint);
+            var conduits = new List<ElementId>();
+            if (!myOutLn.IsEmpty)
+            {
+                var filter = new BoundingBoxIsInsideFilter(myOutLn);
+                var collector = new FilteredElementCollector(document);
+                conduits = collector
+                    .WherePasses(filter)
+                    .OfClass(typeof(Conduit))
+                    .Cast<Conduit>()
+                    .Select(a => a.Id)
+                    .ToList();
+            }
+            document.Delete(conduits);
+        }
+
         private void CutCondiut(
             double delta,
             XYZ originalBeginning,
@@ -222,27 +274,5 @@ namespace BoxesForElectricCircuit
                 originalEnd.Y - tempVector.Y,
                 originalEnd.Z - tempVector.Z);
         }
-
-        static Connector GetConnectorClosestTo(
-            ConnectorSet connectors,
-            XYZ p)
-        {
-            Connector targetConnector = null;
-            double minDist = double.MaxValue;
-
-            foreach (Connector c in connectors)
-            {
-                double d = c.Origin.DistanceTo(p);
-
-                if (d < minDist)
-                {
-                    targetConnector = c;
-                    minDist = d;
-                }
-            }
-            return targetConnector;
-        }
-
-
     }
 }
